@@ -1,0 +1,355 @@
+
+install.packages('dplyr')
+install.packages('stats')
+install.packages('forecast', dependencies = TRUE)
+install.packages('imputeTS') 
+
+library(tidyr)
+library(dplyr)
+library(stats)
+library(forecast)
+library(ggplot2) 
+library(imputeTS)
+
+pce_data <- read.csv("PCE.csv")
+missing_values <- sum(is.na(PCE_data$PCE))=
+  if (missing_values > 0) {
+    
+    PCE_data$PCE <- na_interpolation(PCE_data$PCE, option = "spline") 
+    
+  } else {
+    # No missing values
+  }
+
+pce_data$Date_POSIX <- as.POSIXct(pce_data$DATE, format = "%m/%d/%Y")
+
+
+pce_data$Year <- format(pce_data$Date_POSIX, "%Y")
+if (missing_values > 0) {
+  
+  pce_data$PCE[is.na(pce_data$PCE)] <- approx(pce_data$Date_POSIX, pce_data$PCE, xout = pce_data$Date_POSIX[is.na(pce_data$PCE)],rule = 2)$y}
+
+
+
+
+plot(pce_data$Year, pce_data$PCE, 
+     xlab = "Year", ylab = "Personal Consumption Expenditures", 
+     main = "Personal Consumption Expenditures Over Time")
+
+# Split the data into training and testing sets (80% training, 20% testing)
+train_size <- floor(0.8 * nrow(pce_data))  # Calculate number of rows for training set (80%)
+train_data <- pce_data[1:train_size, ]
+test_data <- pce_data[(train_size + 1):nrow(pce_data), ]
+
+message("Data has been split into training and testing sets.")
+
+
+# --- Simple Forecasting (Drift Method) ---
+library(forecast)
+# Calculate the average change in PCE (drift)
+drift <- diff(train_data$PCE, lag = 1) %>% mean()
+
+# Get the last PCE value from the training data
+last_value <- tail(train_data$PCE, 1)
+
+# Forecast for the test set using drift
+drift_forecast <- last_value + (drift * seq(along = test_data$PCE))
+
+# --- ETS Model ---
+ets_model <- ets(train_data$PCE, model = "ZZZ")  # Automatic model selection
+ets_fc <- forecast(ets_model, newdata = test_data, h = 156)
+ets_point_forecasts <- ets_fc$mean
+
+# --- ARIMA Model ---
+arima_model <- auto.arima(train_data$PCE)
+arima_fc <- forecast(arima_model, newdata = test_data, h = 156)
+arima_point_forecasts <- arima_fc$mean
+
+# Print summary of each model
+cat("\n\nSummary of ETS Model:\n")
+summary(ets_model)
+cat("\n\nSummary of ARIMA Model:\n")
+summary(arima_model)
+
+test_data <- na.omit(test_data)
+
+test_data_subset <- test_data$PCE
+ets_rmse <- sqrt(mean((ets_point_forecasts - test_data_subset)^2, na.rm = TRUE))
+arima_rmse <- sqrt(mean((arima_point_forecasts - test_data_subset)^2, na.rm = TRUE))
+drift_rmse <- sqrt(mean((drift_forecast - test_data_subset)^2, na.rm = TRUE))
+
+ets_mae <- mean(abs(ets_point_forecasts - test_data_subset), na.rm = TRUE)
+arima_mae <- mean(abs(arima_point_forecasts - test_data_subset), na.rm = TRUE)
+drift_mae <- mean(abs(drift_forecast - test_data_subset), na.rm = TRUE)
+
+if (!is.nan(ets_rmse) && !is.nan(arima_rmse) && !is.nan(ets_mae) && !is.nan(arima_mae) && !is.nan(drift_rmse) && !is.nan(drift_mae)) {
+  if (ets_rmse < arima_rmse & ets_rmse < drift_rmse & ets_mae < arima_mae & ets_mae < drift_mae) {
+    message("ETS model performs best with lower RMSE and MAE.")
+  } else if (arima_rmse < ets_rmse & arima_rmse < drift_rmse & arima_mae < ets_mae & arima_mae < drift_mae) {
+    message("ARIMA model performs best with lower RMSE and MAE.")
+  } else {
+    message("Drift method performs best with lower RMSE and MAE.")
+  }
+} else {
+  message("Error: Missing values encountered during error calculation. Model comparison might be inaccurate.")
+}
+
+# You can optionally create a table to present the error measures for all models:
+model_comparison <- data.frame(
+  Model = c("ETS", "ARIMA", "Drift"),
+  RMSE = c(ets_rmse, arima_rmse, drift_rmse),
+  MAE = c(ets_mae, arima_mae, drift_mae)
+)
+
+print(model_comparison)
+
+
+plot(pce_data_subset$Date_POSIX, pce_data_subset$PCE, type = "l", col = "black", 
+     xlab = "Date", ylab = "Personal Consumption Expenditures", 
+     main = "Forecasting Models vs Actual PCE (From 2010)", 
+     ylim = c(min(pce_data_subset$PCE), max(pce_data_subset$PCE) * 1.1))
+
+# Add smoothed lines for each forecast
+lines(stats::lowess(test_data$Date_POSIX, ets_point_forecasts), col = "red", lwd = 2)
+lines(stats::lowess(test_data$Date_POSIX, arima_point_forecasts), col = "blue", lwd = 2)
+lines(stats::lowess(test_data$Date_POSIX, drift_forecast), col = "orange", lwd = 2)
+
+legend_labels <- c("Actual", "ETS Forecast", "ARIMA Forecast", "Drift Forecast")
+
+legend("topleft", legend = legend_labels, col = c("black","red", "blue", "orange"), lty = 1, lwd = 2,
+       inset = c(0, 0), xpd = TRUE, cex = 0.8, title = "Series")
+
+# October 2024 forecasting using ARIMA
+library(forecast)
+arima_model_october <- auto.arima(pce_data$PCE) 
+oct_2024_forecast <- forecast(arima_model_october, new_data = test_data, h = 11)
+oct_2024_forecast_value <- oct_2024_forecast$mean[length(oct_2024_forecast$mean)]
+print(paste("Forecasted PCE for October 2024 using ARIMA model:", oct_2024_forecast_value))
+
+#Static Forecasting Comparison:
+
+wets_fc_static <- forecast(ets_model, h = nrow(test_data))
+arima_fc_static <- forecast(arima_model, h = nrow(test_data))
+
+# Calculate errors for the entire test data set
+ets_error_static <- sqrt(mean((ets_fc_static$mean - test_data$PCE)^2, na.rm = TRUE))
+arima_error_static <- sqrt(mean((arima_fc_static$mean - test_data$PCE)^2, na.rm = TRUE))
+drift_error_static <- sqrt(mean((drift_forecast - test_data$PCE)^2, na.rm = TRUE))
+
+# Compare errors and identify best model
+best_model_static <- NULL
+if (ets_error_static < arima_error_static & ets_error_static < drift_error_static) {
+  best_model_static <- "ETS"
+} else if (arima_error_static < ets_error_static & arima_error_static < drift_error_static) {
+  best_model_static <- "ARIMA"
+} else {
+  best_model_static <- "Drift"
+}
+
+# Report results for static forecasting
+message("Static Forecasting Comparison:")
+message("  Best Performing Model:", best_model_static)
+message("  RMSE (ETS):", ets_error_static)
+message("  RMSE (ARIMA):", arima_error_static)
+message("  RMSE (Drift):", drift_error_static)
+
+
+#-------------------------------------------xxxxx------------------------------------------#
+
+
+library(tidytext)
+library(tm)
+library(ggplot2)
+library(tidyr)
+library(topicmodels)
+library(tokenizers)
+library(SnowballC)
+library(textstem)
+library(LDAvis) 
+library(servr)
+library(ldatuning)
+library(dplyr)
+
+set.seed(205)
+
+reviews <-  read.csv("HotelsData.csv")
+
+# Sample of 2,000 reviews
+sample_reviews <- sample_n(reviews, 2000)
+sample_reviews <- na.omit(sample_reviews)
+
+# Data preparation
+
+stop_words <- c("the", "a", "is", "in", "of", "to", "for", "on", "with", "as", "be", "and", "that", 
+                "it", "but","i") 
+
+clean_text_vec <- sapply(strsplit(tolower(sample_reviews$Text), split = "\\s+"), function(x) {
+  text_no_punct <- gsub("[[:punct:]]", "", x)  # Remove punctuation using gsub
+  paste(text_no_punct[!text_no_punct %in% stop_words], collapse = " ")  # Remove stop words
+})
+
+sample_reviews$clean_text <- clean_text_vec
+
+# Positive and Negative review segregation
+positive_reviews <- filter(sample_reviews, Review.score >= 4)
+negative_reviews <- filter(sample_reviews, Review.score <= 2)
+
+# Positive review analysis
+
+# Creating a corpus
+corpus_positive <- Corpus(VectorSource(positive_reviews$clean_text))
+#additional stemming and lemmetization
+corpus_positive <- tm_map(corpus_positive, stemDocument)
+corpus_positive <- tm_map(corpus_positive, lemmatize_strings)
+
+# Positive Reviews document term matrix
+dtmdocs <- NULL
+dtmdocs <- DocumentTermMatrix(corpus_positive,
+                              control = list(lemma=TRUE,removePunctuation = TRUE,
+                                             removeNumbers = TRUE, stopwords = TRUE,
+                                             tolower = TRUE))
+raw.sum=apply(dtmdocs,1,FUN=sum)
+dtmdocs=dtmdocs[raw.sum!=0,]
+
+dtm.new <- as.matrix(dtmdocs)
+frequency <- colSums(dtm.new)
+frequency <- sort(frequency, decreasing=TRUE)
+doc_length <- rowSums(dtm.new)
+
+frequency[1:30]
+
+# Finding number of topics 
+result <- FindTopicsNumber(
+  dtm.new,
+  topics = seq(from = 5, to = 20, by = 1),
+  metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010"),
+  method = "Gibbs",
+  control = list(seed = 205),
+  mc.cores = 2L,
+  verbose = TRUE
+)
+FindTopicsNumber_plot(result)
+
+ldaOut <-LDA(dtmdocs,18, method="Gibbs", 
+             control=list(iter=1000,seed=205))
+phi <- posterior(ldaOut)$terms %>% as.matrix 
+theta <- posterior(ldaOut)$topics %>% as.matrix 
+ldaOut.terms <- as.matrix(terms(ldaOut, 20))
+ldaOut.terms
+
+
+ldaOut.topics <- data.frame(topics(ldaOut))
+ldaOut.topics$index <- as.numeric(row.names(ldaOut.topics))
+sample_reviews$index <- as.numeric(row.names(sample_reviews))
+datawithtopic_positive <- merge(sample_reviews, ldaOut.topics, by='index',all.x=TRUE)
+datawithtopic_positive <- datawithtopic_positive[order(datawithtopic_positive$index), ]
+
+datawithtopic_positive[0:20,]
+
+# For each review, how closely it associate with each topics (checking with a sample of 10 reviews)
+topicProbabilities <- as.data.frame(ldaOut@gamma)
+topicProbabilities[0:10,1:18]
+
+# frequency of reviews matching with topics
+topics_matched_reviews_positive <- table(datawithtopic_positive$topics.ldaOut.)
+topics_matched_reviews_positive
+
+vocab <- colnames(phi) #vocab list in DTM
+
+# create the JSON object to feed the visualization in LDAvis:
+json_lda <- createJSON(phi = phi, theta = theta, 
+                       vocab = vocab, doc.length = doc_length, 
+                       term.frequency = frequency)
+
+serVis(json_lda, out.dir = 'vis', open.browser = TRUE)
+
+
+
+# Negative review analysis
+
+# Create a Corpus negative reviews object from the clean_text column of your reviews
+corpus_negative <- Corpus(VectorSource(negative_reviews$clean_text))
+corpus_negative <- tm_map(corpus_negative, stemDocument)
+corpus_negative <- tm_map(corpus_negative, lemmatize_strings)
+
+# Negative Reviews document term matrix
+dtmdocsn <- NULL
+dtmdocsn <- DocumentTermMatrix(corpus_negative,
+                               control = list(lemma=TRUE,removePunctuation = TRUE,
+                                              removeNumbers = TRUE, stopwords = TRUE,
+                                              tolower = TRUE))
+raw.sum=apply(dtmdocsn,1,FUN=sum)
+dtmdocsn=dtmdocsn[raw.sum!=0,]
+
+dtm.newn <- as.matrix(dtmdocsn)
+frequencyn <- colSums(dtm.newn)
+frequencyn <- sort(frequencyn, decreasing=TRUE)
+doc_length <- rowSums(dtm.newn)
+
+frequencyn[1:30]
+
+# Finding number of topics
+result <- FindTopicsNumber(
+  dtm.newn,
+  topics = seq(from = 5, to = 20, by = 1),
+  metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010"),
+  method = "Gibbs",
+  control = list(seed = 205),
+  mc.cores = 2L,
+  verbose = TRUE
+)
+
+FindTopicsNumber_plot(result)
+
+ldaOut <-LDA(dtmdocsn,11, method="Gibbs", 
+             control=list(iter=1000,seed=205))
+phi <- posterior(ldaOut)$terms %>% as.matrix 
+theta <- posterior(ldaOut)$topics %>% as.matrix 
+ldaOut.terms <- as.matrix(terms(ldaOut, 15))
+ldaOut.terms
+
+ldaOut.topics <- data.frame(topics(ldaOut))
+ldaOut.topics$index <- as.numeric(row.names(ldaOut.topics))
+negative_reviews$index <- as.numeric(row.names(negative_reviews))
+datawithtopic_negative <- merge(sample_reviews, ldaOut.topics, by='index',all.x=TRUE)
+datawithtopic_negative <- datawithtopic_negative[order(datawithtopic_negative$index), ]
+
+datawithtopic_negative[0:10,]
+
+# For each review, how closely it associate with each topics (checking with a sample of 10 reviews)
+topicProbabilities <- as.data.frame(ldaOut@gamma)
+topicProbabilities[0:10,1:11]
+
+# frequency of reviews matching with topics
+topics_matched_reviews_neg <- table(datawithtopic_negative$topics.ldaOut.)
+topics_matched_reviews_neg
+
+vocab <- colnames(phi) #vocab list in DTM
+
+# create the JSON object to feed the visualization in LDAvis:
+json_lda <- createJSON(phi = phi, theta = theta, 
+                       vocab = vocab, doc.length = doc_length, 
+                       term.frequency = frequencyn)
+
+
+serVis(json_lda, out.dir = 'vis', open.browser = TRUE)
+
+
+# Wordcloud visualisations
+
+library(wordcloud)
+words <- names(frequency)
+
+wordcloud(words[1:100], frequency[1:100], rot.per=0.15, 
+          random.order = FALSE, scale=c(4,0.5),
+          random.color = FALSE, colors=brewer.pal(8,"Dark2"))
+
+
+wordsn <- names(frequencyn)
+
+wordcloud(wordsn[1:100], frequency[1:100], rot.per=0.15, 
+          random.order = FALSE, scale=c(4,0.5),
+          random.color = FALSE, colors=brewer.pal(8,"Dark2"))
+
+
+
