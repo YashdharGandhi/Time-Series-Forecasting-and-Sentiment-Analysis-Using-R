@@ -1,4 +1,4 @@
-# Time Series Forecasting & Sentiment Analysis in R
+# Time Series Forecasting and Sentiment Analysis Using R
 
 ## Overview
 This project explores two key domains: **Time Series Forecasting** and **Sentiment Analysis** using R.  
